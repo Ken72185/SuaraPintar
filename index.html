@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MataBantu - Asisten Tuan Ragil</title>
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
         /* Desain High Contrast & Ukuran Besar untuk Lansia */
         body {
@@ -24,6 +23,25 @@
             box-shadow: 0 4px 10px rgba(255,255,255,0.1);
         }
         h1, h2 { color: #facc15; }
+        
+        /* Tombol SOS Khusus */
+        .btn-sos {
+            background-color: #ef4444; /* Merah terang */
+            color: white;
+            font-size: 28px;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
+            animation: pulse 2s infinite;
+        }
+        .btn-sos:hover, .btn-sos:active { background-color: #dc2626; }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+
         textarea {
             width: 90%;
             height: 100px;
@@ -49,144 +67,147 @@
             transition: 0.2s;
         }
         button:active { background-color: #eab308; transform: scale(0.98); }
+        
+        /* Kamera & Zoom */
         .camera-box {
             margin-top: 20px;
             padding-top: 20px;
             border-top: 2px solid #444;
+            overflow: hidden; /* Biar kalau di-zoom gak tumpah ke luar kotak */
+            position: relative;
         }
-        video, canvas {
+        video {
             width: 100%;
             max-width: 400px;
             border-radius: 8px;
             border: 3px solid #facc15;
             display: none;
             margin: auto;
+            transform-origin: center center; /* Biar zoom dari tengah */
+            transition: transform 0.2s ease;
         }
+        .zoom-controls {
+            display: none;
+            margin-top: 15px;
+        }
+        input[type=range] {
+            width: 80%;
+            height: 10px;
+            background: #444;
+            border-radius: 5px;
+            outline: none;
+        }
+        
         #status {
             font-size: 20px;
             color: #6ee7b7;
             margin-top: 10px;
             font-weight: bold;
         }
+        .section-divider { margin: 40px 0; border-bottom: 2px dashed #444; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <h1>MataBantu</h1>
-    <p style="font-size: 18px;">Asisten Pintar Pembaca Teks & Uang</p>
+    <p style="font-size: 18px;">Asisten Pintar Lansia</p>
+
+    <button class="btn-sos" onclick="sendSOS()">🚨 TOMBOL DARURAT 🚨</button>
+    <div id="statusSOS" style="color: #ef4444; margin-top: 10px; font-weight: bold;"></div>
+
+    <div class="section-divider"></div>
 
     <h2>1. Teks ke Suara</h2>
     <textarea id="textInput" placeholder="Ketik teks di sini..."></textarea>
     <button onclick="speakText()">🔊 Bacakan Teks</button>
 
+    <div class="section-divider"></div>
+
     <div class="camera-box">
-        <h2>2. Pembaca Nominal Uang</h2>
-        <button id="startCameraBtn" onclick="startCamera()">📷 Buka Kamera</button>
+        <h2>2. Kaca Pembesar (Kamera)</h2>
+        <button id="startCameraBtn" onclick="startMagnifier()">📷 Buka Kaca Pembesar</button>
         
         <video id="videoElement" autoplay playsinline></video>
-        <canvas id="canvasElement"></canvas>
         
-        <button id="scanMoneyBtn" onclick="scanMoney()" style="display:none; background-color: #34d399;">🔍 Pindai Uang</button>
-        <div id="status"></div>
+        <div class="zoom-controls" id="zoomControls">
+            <p style="font-size: 20px; margin-bottom: 5px;">Atur Pembesaran (Zoom):</p>
+            <input type="range" id="zoomSlider" min="1" max="4" step="0.1" value="1" oninput="applyZoom()">
+        </div>
     </div>
 </div>
 
 <script>
-    // --- FITUR 1: TEXT TO SPEECH ---
+    // --- FITUR 1: TOMBOL SOS (GEOLOCATION + WHATSAPP) ---
+    function sendSOS() {
+        const statusSOS = document.getElementById('statusSOS');
+        statusSOS.innerText = "Mencari lokasi...";
+        
+        // GANTI DENGAN NOMOR KELUARGA/WALI (Gunakan format 62 tanpa angka 0 di depan)
+        const nomorWA = "6281234567890"; 
+
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    const mapsLink = `https://www.google.com/maps?q=${lat},${lng}`;
+                    
+                    const pesan = `TOLONG DARURAT! Saya butuh bantuan sekarang. Ini lokasi saya: ${mapsLink}`;
+                    const waLink = `https://wa.me/${nomorWA}?text=${encodeURIComponent(pesan)}`;
+                    
+                    statusSOS.innerText = "Membuka WhatsApp...";
+                    window.open(waLink, '_blank');
+                    statusSOS.innerText = ""; // Bersihin pesan setelah kebuka
+                },
+                (error) => {
+                    statusSOS.innerText = "Gagal dapat lokasi. Pastikan GPS nyala.";
+                    alert("Tolong nyalakan GPS/Lokasi di HP Anda.");
+                }
+            );
+        } else {
+            alert("Browser Anda tidak mendukung fitur lokasi.");
+        }
+    }
+
+    // --- FITUR 2: TEXT TO SPEECH ---
     function speakText(customText = null) {
         const text = customText || document.getElementById('textInput').value;
         if (!text) return;
 
-        // Berhentiin suara yang lagi jalan biar gak numpuk
         window.speechSynthesis.cancel(); 
-
         const speech = new SpeechSynthesisUtterance(text);
-        speech.lang = 'id-ID'; // Set bahasa Indonesia
-        speech.rate = 0.9; // Agak dilambatin biar lansia gampang denger
-        speech.pitch = 1;
-        
+        speech.lang = 'id-ID'; 
+        speech.rate = 0.9; 
         window.speechSynthesis.speak(speech);
     }
 
-    // --- FITUR 2: KAMERA & SCAN UANG (OCR) UPGRADED ---
+    // --- FITUR 3: KACA PEMBESAR (KAMERA + ZOOM CSS) ---
     const video = document.getElementById('videoElement');
-    const canvas = document.getElementById('canvasElement');
-    const scanBtn = document.getElementById('scanMoneyBtn');
     const startCamBtn = document.getElementById('startCameraBtn');
-    const statusText = document.getElementById('status');
+    const zoomControls = document.getElementById('zoomControls');
+    const zoomSlider = document.getElementById('zoomSlider');
 
-    async function startCamera() {
+    async function startMagnifier() {
         try {
-            // Minta akses kamera belakang dengan resolusi tinggi (Full HD)
             const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { 
-                    facingMode: "environment",
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 },
-                    advanced: [{ focusMode: "continuous" }] // Paksa auto-focus
-                } 
+                video: { facingMode: "environment" } 
             });
             video.srcObject = stream;
             video.style.display = "block";
-            scanBtn.style.display = "block";
+            zoomControls.style.display = "block";
             startCamBtn.style.display = "none";
-            speakText("Kamera terbuka. Pastikan uang terang dan fokus, lalu tekan Pindai Uang.");
+            speakText("Kaca pembesar terbuka. Geser tombol di bawah kamera untuk memperbesar.");
         } catch (err) {
-            alert("Gagal buka kamera: " + err);
+            alert("Gagal buka kamera.");
             speakText("Gagal membuka kamera.");
         }
     }
 
-    async function scanMoney() {
-        statusText.innerText = "Membaca angka... Tahan kamera ya.";
-        speakText("Sedang membaca.");
-        
-        // Gambar frame dari video ke canvas
-        const context = canvas.getContext('2d');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-        // Ambil data gambar dari canvas
-        const imageData = canvas.toDataURL('image/png');
-
-        try {
-            // Proses OCR menggunakan Tesseract
-            const result = await Tesseract.recognize(imageData, 'ind');
-            let detectedText = result.data.text;
-            
-            // --- FILTERING PINTAR ---
-            // 1. Ubah semua jadi huruf besar
-            detectedText = detectedText.toUpperCase();
-            
-            // 2. Ubah huruf 'O' yang sering salah baca jadi angka '0'
-            detectedText = detectedText.replace(/O/g, '0');
-            
-            // 3. Buang titik, koma, 'Rp', huruf, spasi, biar nyisa angka doang
-            detectedText = detectedText.replace(/[^0-9]/g, '');
-
-            console.log("Teks bersih setelah difilter:", detectedText);
-
-            // Cari angka nominal uang rupiah umum
-            const rupiahRegex = /(1000|2000|5000|10000|20000|50000|100000)/g;
-            const matches = detectedText.match(rupiahRegex);
-
-            if (matches && matches.length > 0) {
-                // Ambil angka terbesar untuk menghindari salah deteksi nomer seri
-                const nominal = Math.max(...matches.map(Number));
-                const kalimat = `Uang ini nominalnya ${nominal} rupiah`;
-                statusText.innerText = kalimat;
-                speakText(kalimat);
-            } else {
-                statusText.innerText = "Nominal tidak terlihat, dekatkan ke angka.";
-                speakText("Tidak menemukan nominal. Coba fokuskan kamera tepat di angkanya.");
-            }
-        } catch (err) {
-            statusText.innerText = "Gagal memindai.";
-            speakText("Kamera gagal membaca.");
-            console.error(err);
-        }
+    function applyZoom() {
+        const zoomValue = zoomSlider.value;
+        // Pake CSS Transform buat nge-zoom video stream-nya
+        video.style.transform = `scale(${zoomValue})`;
     }
 </script>
 
