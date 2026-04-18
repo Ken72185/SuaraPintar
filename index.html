@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Asisten Suara & Pembaca Uang</title>
+    <title>MataBantu - Asisten Tuan Ragil</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
         /* Desain High Contrast & Ukuran Besar untuk Lansia */
@@ -66,14 +66,15 @@
             font-size: 20px;
             color: #6ee7b7;
             margin-top: 10px;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>Asisten Pintar</h1>
-    <p style="font-size: 18px;">Pilih fitur yang ingin digunakan:</p>
+    <h1>MataBantu</h1>
+    <p style="font-size: 18px;">Asisten Pintar Pembaca Teks & Uang</p>
 
     <h2>1. Teks ke Suara</h2>
     <textarea id="textInput" placeholder="Ketik teks di sini..."></textarea>
@@ -108,7 +109,7 @@
         window.speechSynthesis.speak(speech);
     }
 
-    // --- FITUR 2: KAMERA & SCAN UANG (OCR) ---
+    // --- FITUR 2: KAMERA & SCAN UANG (OCR) UPGRADED ---
     const video = document.getElementById('videoElement');
     const canvas = document.getElementById('canvasElement');
     const scanBtn = document.getElementById('scanMoneyBtn');
@@ -117,15 +118,20 @@
 
     async function startCamera() {
         try {
-            // Minta akses kamera belakang (environment)
+            // Minta akses kamera belakang dengan resolusi tinggi (Full HD)
             const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: "environment" } 
+                video: { 
+                    facingMode: "environment",
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 },
+                    advanced: [{ focusMode: "continuous" }] // Paksa auto-focus
+                } 
             });
             video.srcObject = stream;
             video.style.display = "block";
             scanBtn.style.display = "block";
             startCamBtn.style.display = "none";
-            speakText("Kamera terbuka. Arahkan uang ke kamera dan tekan tombol Pindai Uang.");
+            speakText("Kamera terbuka. Pastikan uang terang dan fokus, lalu tekan Pindai Uang.");
         } catch (err) {
             alert("Gagal buka kamera: " + err);
             speakText("Gagal membuka kamera.");
@@ -133,8 +139,8 @@
     }
 
     async function scanMoney() {
-        statusText.innerText = "Memindai gambar... Mohon tunggu.";
-        speakText("Sedang memindai uang, mohon tunggu sebentar.");
+        statusText.innerText = "Membaca angka... Tahan kamera ya.";
+        speakText("Sedang membaca.");
         
         // Gambar frame dari video ke canvas
         const context = canvas.getContext('2d');
@@ -146,29 +152,39 @@
         const imageData = canvas.toDataURL('image/png');
 
         try {
-            // Kirim gambar ke Tesseract buat dibaca teksnya
+            // Proses OCR menggunakan Tesseract
             const result = await Tesseract.recognize(imageData, 'ind');
-            const detectedText = result.data.text;
+            let detectedText = result.data.text;
             
-            console.log("Teks terdeteksi:", detectedText);
+            // --- FILTERING PINTAR ---
+            // 1. Ubah semua jadi huruf besar
+            detectedText = detectedText.toUpperCase();
+            
+            // 2. Ubah huruf 'O' yang sering salah baca jadi angka '0'
+            detectedText = detectedText.replace(/O/g, '0');
+            
+            // 3. Buang titik, koma, 'Rp', huruf, spasi, biar nyisa angka doang
+            detectedText = detectedText.replace(/[^0-9]/g, '');
 
-            // Cari pola angka uang rupiah umum (1000, 2000, 5000, 10000, 20000, 50000, 100000)
-            const rupiahRegex = /\b(1000|2000|5000|10000|20000|50000|100000)\b/g;
+            console.log("Teks bersih setelah difilter:", detectedText);
+
+            // Cari angka nominal uang rupiah umum
+            const rupiahRegex = /(1000|2000|5000|10000|20000|50000|100000)/g;
             const matches = detectedText.match(rupiahRegex);
 
             if (matches && matches.length > 0) {
-                // Ambil angka terbesar yang ketemu (buat menghindari salah baca angka seri)
+                // Ambil angka terbesar untuk menghindari salah deteksi nomer seri
                 const nominal = Math.max(...matches.map(Number));
-                const kalimat = `Nominal uang terdeteksi adalah ${nominal} rupiah`;
+                const kalimat = `Uang ini nominalnya ${nominal} rupiah`;
                 statusText.innerText = kalimat;
                 speakText(kalimat);
             } else {
-                statusText.innerText = "Nominal tidak jelas, coba ulangi.";
-                speakText("Nominal uang tidak jelas. Coba atur posisi kamera dan ulangi.");
+                statusText.innerText = "Nominal tidak terlihat, dekatkan ke angka.";
+                speakText("Tidak menemukan nominal. Coba fokuskan kamera tepat di angkanya.");
             }
         } catch (err) {
             statusText.innerText = "Gagal memindai.";
-            speakText("Terjadi kesalahan saat memindai.");
+            speakText("Kamera gagal membaca.");
             console.error(err);
         }
     }
