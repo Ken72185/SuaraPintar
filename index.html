@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Asisten Suara & Pembaca Uang</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+    <style>
+        /* Desain High Contrast & Ukuran Besar untuk Lansia */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+        .container {
+            max-width: 600px;
+            margin: auto;
+            background-color: #1e1e1e;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(255,255,255,0.1);
+        }
+        h1, h2 { color: #facc15; }
+        textarea {
+            width: 90%;
+            height: 100px;
+            font-size: 24px;
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            border: 2px solid #facc15;
+            background-color: #333;
+            color: #fff;
+        }
+        button {
+            width: 95%;
+            font-size: 24px;
+            padding: 15px;
+            margin: 10px 0;
+            background-color: #facc15;
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        button:active { background-color: #eab308; transform: scale(0.98); }
+        .camera-box {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid #444;
+        }
+        video, canvas {
+            width: 100%;
+            max-width: 400px;
+            border-radius: 8px;
+            border: 3px solid #facc15;
+            display: none;
+            margin: auto;
+        }
+        #status {
+            font-size: 20px;
+            color: #6ee7b7;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Asisten Pintar</h1>
+    <p style="font-size: 18px;">Pilih fitur yang ingin digunakan:</p>
+
+    <h2>1. Teks ke Suara</h2>
+    <textarea id="textInput" placeholder="Ketik teks di sini..."></textarea>
+    <button onclick="speakText()">🔊 Bacakan Teks</button>
+
+    <div class="camera-box">
+        <h2>2. Pembaca Nominal Uang</h2>
+        <button id="startCameraBtn" onclick="startCamera()">📷 Buka Kamera</button>
+        
+        <video id="videoElement" autoplay playsinline></video>
+        <canvas id="canvasElement"></canvas>
+        
+        <button id="scanMoneyBtn" onclick="scanMoney()" style="display:none; background-color: #34d399;">🔍 Pindai Uang</button>
+        <div id="status"></div>
+    </div>
+</div>
+
+<script>
+    // --- FITUR 1: TEXT TO SPEECH ---
+    function speakText(customText = null) {
+        const text = customText || document.getElementById('textInput').value;
+        if (!text) return;
+
+        // Berhentiin suara yang lagi jalan biar gak numpuk
+        window.speechSynthesis.cancel(); 
+
+        const speech = new SpeechSynthesisUtterance(text);
+        speech.lang = 'id-ID'; // Set bahasa Indonesia
+        speech.rate = 0.9; // Agak dilambatin biar lansia gampang denger
+        speech.pitch = 1;
+        
+        window.speechSynthesis.speak(speech);
+    }
+
+    // --- FITUR 2: KAMERA & SCAN UANG (OCR) ---
+    const video = document.getElementById('videoElement');
+    const canvas = document.getElementById('canvasElement');
+    const scanBtn = document.getElementById('scanMoneyBtn');
+    const startCamBtn = document.getElementById('startCameraBtn');
+    const statusText = document.getElementById('status');
+
+    async function startCamera() {
+        try {
+            // Minta akses kamera belakang (environment)
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "environment" } 
+            });
+            video.srcObject = stream;
+            video.style.display = "block";
+            scanBtn.style.display = "block";
+            startCamBtn.style.display = "none";
+            speakText("Kamera terbuka. Arahkan uang ke kamera dan tekan tombol Pindai Uang.");
+        } catch (err) {
+            alert("Gagal buka kamera: " + err);
+            speakText("Gagal membuka kamera.");
+        }
+    }
+
+    async function scanMoney() {
+        statusText.innerText = "Memindai gambar... Mohon tunggu.";
+        speakText("Sedang memindai uang, mohon tunggu sebentar.");
+        
+        // Gambar frame dari video ke canvas
+        const context = canvas.getContext('2d');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Ambil data gambar dari canvas
+        const imageData = canvas.toDataURL('image/png');
+
+        try {
+            // Kirim gambar ke Tesseract buat dibaca teksnya
+            const result = await Tesseract.recognize(imageData, 'ind');
+            const detectedText = result.data.text;
+            
+            console.log("Teks terdeteksi:", detectedText);
+
+            // Cari pola angka uang rupiah umum (1000, 2000, 5000, 10000, 20000, 50000, 100000)
+            const rupiahRegex = /\b(1000|2000|5000|10000|20000|50000|100000)\b/g;
+            const matches = detectedText.match(rupiahRegex);
+
+            if (matches && matches.length > 0) {
+                // Ambil angka terbesar yang ketemu (buat menghindari salah baca angka seri)
+                const nominal = Math.max(...matches.map(Number));
+                const kalimat = `Nominal uang terdeteksi adalah ${nominal} rupiah`;
+                statusText.innerText = kalimat;
+                speakText(kalimat);
+            } else {
+                statusText.innerText = "Nominal tidak jelas, coba ulangi.";
+                speakText("Nominal uang tidak jelas. Coba atur posisi kamera dan ulangi.");
+            }
+        } catch (err) {
+            statusText.innerText = "Gagal memindai.";
+            speakText("Terjadi kesalahan saat memindai.");
+            console.error(err);
+        }
+    }
+</script>
+
+</body>
+</html>
